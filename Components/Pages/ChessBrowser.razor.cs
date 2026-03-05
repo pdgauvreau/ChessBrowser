@@ -74,20 +74,8 @@ namespace ChessBrowser.Components.Pages
               else eventDateParam = DBNull.Value;
             }
 
-            object gameDateParam;
-            string gd = (g.GameDate ?? "").Trim();
-            if (string.IsNullOrEmpty(gd)) gameDateParam = DBNull.Value;
-            else
-            {
-              string[] parts = gd.Split('.');
-              if (parts.Length != 3) gameDateParam = DBNull.Value;
-              else if (int.TryParse(parts[0], out int gy) && int.TryParse(parts[1], out int gm) && int.TryParse(parts[2], out int gdv) && gy >= 1 && gy <= 9999 && gm >= 1 && gm <= 12 && gdv >= 1 && gdv <= 31)
-                gameDateParam = new DateTime(gy, gm, gdv);
-              else gameDateParam = DBNull.Value;
-            }
-
             int eID;
-            using (var cmdEvent = new MySqlCommand("SELECT eID FROM Events WHERE Name = @name AND Site = @site AND EventDate = @eventDate LIMIT 1", conn))
+            using (var cmdEvent = new MySqlCommand("SELECT eID FROM Events WHERE Name = @name AND Site = @site AND `Date` <=> @eventDate LIMIT 1", conn))
             {
               cmdEvent.Parameters.AddWithValue("@name", g.EventName);
               cmdEvent.Parameters.AddWithValue("@site", g.Site);
@@ -97,14 +85,14 @@ namespace ChessBrowser.Components.Pages
                 eID = Convert.ToInt32(eidObj);
               else
               {
-                using (var cmdIns = new MySqlCommand("INSERT INTO Events (Name, Site, EventDate) VALUES (@name, @site, @eventDate)", conn))
+                using (var cmdIns = new MySqlCommand("INSERT INTO Events (Name, Site, `Date`) VALUES (@name, @site, @eventDate)", conn))
                 {
                   cmdIns.Parameters.AddWithValue("@name", g.EventName);
                   cmdIns.Parameters.AddWithValue("@site", g.Site);
                   cmdIns.Parameters.AddWithValue("@eventDate", eventDateParam);
                   cmdIns.ExecuteNonQuery();
                 }
-                eID = (int)(long)new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar()!;
+                eID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar());
               }
             }
 
@@ -138,7 +126,7 @@ namespace ChessBrowser.Components.Pages
                     cmdI.Parameters.AddWithValue("@elo", (object?)g.WhiteElo ?? DBNull.Value);
                     cmdI.ExecuteNonQuery();
                   }
-                  whitePID = (int)(long)new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar()!;
+                  whitePID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar());
                 }
               }
             }
@@ -173,20 +161,20 @@ namespace ChessBrowser.Components.Pages
                     cmdI.Parameters.AddWithValue("@elo", (object?)g.BlackElo ?? DBNull.Value);
                     cmdI.ExecuteNonQuery();
                   }
-                  blackPID = (int)(long)new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar()!;
+                  blackPID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar());
                 }
               }
             }
 
-            using (var cmdGame = new MySqlCommand("INSERT INTO Games (eID, WhitePlayer, BlackPlayer, Round, Result, GameDate, Moves) VALUES (@eID, @whitePlayer, @blackPlayer, @round, @result, @gameDate, @moves)", conn))
+            using (var cmdGame = new MySqlCommand("INSERT IGNORE INTO Games (eID, WhitePlayer, BlackPlayer, Round, Result, Moves) VALUES (@eID, @whitePlayer, @blackPlayer, @round, @result, @moves)", conn))
             {
               cmdGame.Parameters.AddWithValue("@eID", eID);
               cmdGame.Parameters.AddWithValue("@whitePlayer", whitePID);
               cmdGame.Parameters.AddWithValue("@blackPlayer", blackPID);
               cmdGame.Parameters.AddWithValue("@round", g.Round);
               cmdGame.Parameters.AddWithValue("@result", g.Result.ToString());
-              cmdGame.Parameters.AddWithValue("@gameDate", gameDateParam);
-              cmdGame.Parameters.AddWithValue("@moves", g.Moves);
+              string moves = g.Moves ?? "";
+              cmdGame.Parameters.AddWithValue("@moves", moves.Length > 2000 ? moves.Substring(0, 2000) : moves);
               cmdGame.ExecuteNonQuery();
             }
 
@@ -248,7 +236,7 @@ namespace ChessBrowser.Components.Pages
           // TODO:
           //   Generate and execute an SQL command,
           //   then parse the results into an appropriate string and return it.
-          string selectList = "Events.Name AS eName, Events.Site AS eSite, Events.EventDate AS eDate, WhiteP.Name AS wName, WhiteP.Elo AS wElo, BlackP.Name AS bName, BlackP.Elo AS bElo, Games.Result";
+          string selectList = "Events.Name AS eName, Events.Site AS eSite, Events.`Date` AS eDate, WhiteP.Name AS wName, WhiteP.Elo AS wElo, BlackP.Name AS bName, BlackP.Elo AS bElo, Games.Result";
           if (showMoves)
             selectList += ", Games.Moves AS Moves";
           string sql = "SELECT " + selectList + " FROM Games JOIN Events ON Games.eID = Events.eID JOIN Players AS WhiteP ON Games.WhitePlayer = WhiteP.pID JOIN Players AS BlackP ON Games.BlackPlayer = BlackP.pID WHERE 1=1";
@@ -256,7 +244,7 @@ namespace ChessBrowser.Components.Pages
           if (!string.IsNullOrEmpty(black)) sql += " AND BlackP.Name = @black";
           if (!string.IsNullOrEmpty(winner)) sql += " AND Games.Result = @winner";
           if (!string.IsNullOrEmpty(opening)) sql += " AND Games.Moves LIKE CONCAT(@opening, '%')";
-          if (useDate) sql += " AND Events.EventDate >= @startDate AND Events.EventDate <= @endDate";
+          if (useDate) sql += " AND Events.`Date` >= @startDate AND Events.`Date` <= @endDate";
 
           using (var cmd = new MySqlCommand(sql, conn))
           {
