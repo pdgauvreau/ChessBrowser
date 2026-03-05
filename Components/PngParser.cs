@@ -63,9 +63,9 @@ public class PngParser
                 continue;
             string tagName = line.Substring(1, spaceIdx - 1);
             
-            // get tag value: whatever's between the first and last double quotes
-            int firstQuoteIdx = tagName.IndexOf('"');
-            int lastQuoteIdx = tagName.LastIndexOf('"');
+            // get tag value: whatever's between the first and last double quotes (in the line)
+            int firstQuoteIdx = line.IndexOf('"');
+            int lastQuoteIdx = line.LastIndexOf('"');
             if (firstQuoteIdx < 0 || firstQuoteIdx == lastQuoteIdx)
                 continue;
             string tagValue = line.Substring(firstQuoteIdx + 1, lastQuoteIdx - firstQuoteIdx - 1);
@@ -77,7 +77,7 @@ public class PngParser
                     game.EventName = tagValue;
                     break;
                 case "Site":
-                    game.Site = tagValue;
+                    game.Site = string.IsNullOrWhiteSpace(tagValue) ? "?" : tagValue;
                     break;
                 case "Date":
                     game.EventDate = tagValue;
@@ -97,16 +97,14 @@ public class PngParser
                         "1-0" => 'W',
                         "0-1" => 'B',
                         "1/2-1/2" => 'D',
-                        _ => '?'
+                        _ => 'D'
                     };
                     break;
                 case "WhiteElo":
-                    // todo: might have to handle if tries to parse a non-int value
-                    game.WhiteElo = int.Parse(tagValue);
+                    game.WhiteElo = int.TryParse(tagValue, out int we) && we >= 0 ? we : null;
                     break;
                 case "BlackElo":
-                    // todo: might have to handle if tries to parse a non-int value
-                    game.BlackElo = int.Parse(tagValue);
+                    game.BlackElo = int.TryParse(tagValue, out int be) && be >= 0 ? be : null;
                     break;
             }
         }
