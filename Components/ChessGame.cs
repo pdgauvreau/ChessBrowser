@@ -9,6 +9,7 @@ public class ChessGame
   public string Site { get; set; } = "";
   public string Round { get; set; } = "";
   public string EventDate { get; set; } = "";
+  public string GameDate { get; set; } = "";
 
   public string WhiteName { get; set; } = "";
   public string BlackName { get; set; } = "";

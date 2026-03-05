@@ -80,6 +80,9 @@ public class PngParser
                     game.Site = string.IsNullOrWhiteSpace(tagValue) ? "?" : tagValue;
                     break;
                 case "Date":
+                    game.GameDate = tagValue;
+                    break;
+                case "EventDate":
                     game.EventDate = tagValue;
                     break;
                 case "Round":

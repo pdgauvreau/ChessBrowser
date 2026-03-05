@@ -74,6 +74,18 @@ namespace ChessBrowser.Components.Pages
               else eventDateParam = DBNull.Value;
             }
 
+            object gameDateParam;
+            string gd = (g.GameDate ?? "").Trim();
+            if (string.IsNullOrEmpty(gd)) gameDateParam = DBNull.Value;
+            else
+            {
+              string[] parts = gd.Split('.');
+              if (parts.Length != 3) gameDateParam = DBNull.Value;
+              else if (int.TryParse(parts[0], out int gy) && int.TryParse(parts[1], out int gm) && int.TryParse(parts[2], out int gdv) && gy >= 1 && gy <= 9999 && gm >= 1 && gm <= 12 && gdv >= 1 && gdv <= 31)
+                gameDateParam = new DateTime(gy, gm, gdv);
+              else gameDateParam = DBNull.Value;
+            }
+
             int eID;
             using (var cmdEvent = new MySqlCommand("SELECT eID FROM Events WHERE Name = @name AND Site = @site AND EventDate = @eventDate LIMIT 1", conn))
             {
@@ -173,7 +185,7 @@ namespace ChessBrowser.Components.Pages
               cmdGame.Parameters.AddWithValue("@blackPlayer", blackPID);
               cmdGame.Parameters.AddWithValue("@round", g.Round);
               cmdGame.Parameters.AddWithValue("@result", g.Result.ToString());
-              cmdGame.Parameters.AddWithValue("@gameDate", eventDateParam);
+              cmdGame.Parameters.AddWithValue("@gameDate", gameDateParam);
               cmdGame.Parameters.AddWithValue("@moves", g.Moves);
               cmdGame.ExecuteNonQuery();
             }
@@ -192,6 +204,7 @@ namespace ChessBrowser.Components.Pages
         catch (Exception e)
         {
           System.Diagnostics.Debug.WriteLine(e.Message);
+          await InvokeAsync(() => { Results = "Upload error: " + e.Message; StateHasChanged(); });
         }
       }
 
@@ -321,7 +334,7 @@ namespace ChessBrowser.Components.Pages
           }
 
           // load the chosen file and split it into an array of strings, one per line
-          using var stream = file.OpenReadStream(1000000); // max 1MB
+          using var stream = file.OpenReadStream(52428800); // max 50MB
           using var reader = new StreamReader(stream);                   
           fileContent = await reader.ReadToEndAsync();
           string[] fileLines = fileContent.Split(new string[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
