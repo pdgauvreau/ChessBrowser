@@ -53,136 +53,165 @@ namespace ChessBrowser.Components.Pages
         {
           // Open a connection
           conn.Open();
-
-          // Iterate through your data and generate appropriate insert commands
-          int total = games.Count;
-          int processed = 0;
-          foreach (ChessGame g in games)
+          using (var transaction = conn.BeginTransaction())
           {
-            object eventDateParam;
-            string ed = (g.EventDate ?? "").Trim();
-            if (string.IsNullOrEmpty(ed)) eventDateParam = DBNull.Value;
-            else
+            try
             {
-              string[] parts = ed.Split('.');
-              if (parts.Length != 3) eventDateParam = DBNull.Value;
-              else if (int.TryParse(parts[0], out int y) && int.TryParse(parts[1], out int m) && int.TryParse(parts[2], out int d) && y >= 1 && y <= 9999 && m >= 1 && m <= 12 && d >= 1 && d <= 31)
-                eventDateParam = new DateTime(y, m, d);
-              else eventDateParam = DBNull.Value;
-            }
-
-            int eID;
-            using (var cmdEvent = new MySqlCommand("SELECT eID FROM Events WHERE Name = @name AND Site = @site AND `Date` <=> @eventDate LIMIT 1", conn))
-            {
-              cmdEvent.Parameters.AddWithValue("@name", g.EventName);
-              cmdEvent.Parameters.AddWithValue("@site", g.Site);
-              cmdEvent.Parameters.AddWithValue("@eventDate", eventDateParam);
-              object? eidObj = cmdEvent.ExecuteScalar();
-              if (eidObj != null && eidObj != DBNull.Value)
-                eID = Convert.ToInt32(eidObj);
-              else
+              // Iterate through your data and generate appropriate insert commands
+              int total = games.Count;
+              int processed = 0;
+              foreach (ChessGame g in games)
               {
-                using (var cmdIns = new MySqlCommand("INSERT INTO Events (Name, Site, `Date`) VALUES (@name, @site, @eventDate)", conn))
+                object eventDateParam;
+                string ed = (g.EventDate ?? "").Trim();
+                if (string.IsNullOrEmpty(ed)) eventDateParam = DBNull.Value;
+                else
                 {
-                  cmdIns.Parameters.AddWithValue("@name", g.EventName);
-                  cmdIns.Parameters.AddWithValue("@site", g.Site);
-                  cmdIns.Parameters.AddWithValue("@eventDate", eventDateParam);
-                  cmdIns.ExecuteNonQuery();
+                  string[] parts = ed.Split('.');
+                  if (parts.Length != 3) 
+                    eventDateParam = "0000-00-00";
+                  else if (int.TryParse(parts[0], out int y) && int.TryParse(parts[1], out int m) &&
+                           int.TryParse(parts[2], out int d) && y >= 1 && y <= 9999 && m >= 1 && m <= 12 && d >= 1 &&
+                           d <= 31)
+                    eventDateParam = new DateTime(y, m, d);
+                  else 
+                    eventDateParam = "0000-00-00";
                 }
-                eID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar());
-              }
-            }
 
-            int whitePID;
-            using (var cmdP = new MySqlCommand("SELECT pID, Elo FROM Players WHERE Name = @name LIMIT 1", conn))
-            {
-              cmdP.Parameters.AddWithValue("@name", g.WhiteName);
-              using (var r = cmdP.ExecuteReader())
-              {
-                if (r.Read())
+                int eID;
+                using (var cmdEvent =
+                       new MySqlCommand(
+                         "SELECT eID FROM Events WHERE Name = @name AND Site = @site AND `Date` <=> @eventDate LIMIT 1",
+                         conn, transaction))
                 {
-                  whitePID = r.GetInt32("pID");
-                  int? curElo = r.IsDBNull(r.GetOrdinal("Elo")) ? null : r.GetInt32("Elo");
-                  r.Close();
-                  if (g.WhiteElo.HasValue && (!curElo.HasValue || g.WhiteElo.Value > curElo.Value))
+                  cmdEvent.Parameters.AddWithValue("@name", g.EventName);
+                  cmdEvent.Parameters.AddWithValue("@site", g.Site);
+                  cmdEvent.Parameters.AddWithValue("@eventDate", eventDateParam);
+                  object? eidObj = cmdEvent.ExecuteScalar();
+                  if (eidObj != null && eidObj != DBNull.Value)
+                    eID = Convert.ToInt32(eidObj);
+                  else
                   {
-                    using (var cmdU = new MySqlCommand("UPDATE Players SET Elo = @elo WHERE pID = @pID", conn))
+                    using (var cmdIns =
+                           new MySqlCommand("INSERT INTO Events (Name, Site, `Date`) VALUES (@name, @site, @eventDate)",
+                             conn, transaction))
                     {
-                      cmdU.Parameters.AddWithValue("@elo", g.WhiteElo.Value);
-                      cmdU.Parameters.AddWithValue("@pID", whitePID);
-                      cmdU.ExecuteNonQuery();
+                      cmdIns.Parameters.AddWithValue("@name", g.EventName);
+                      cmdIns.Parameters.AddWithValue("@site", g.Site);
+                      cmdIns.Parameters.AddWithValue("@eventDate", eventDateParam);
+                      cmdIns.ExecuteNonQuery();
+                    }
+
+                    eID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn, transaction).ExecuteScalar());
+                  }
+                }
+
+                int whitePID;
+                using (var cmdP = new MySqlCommand("SELECT pID, Elo FROM Players WHERE Name = @name LIMIT 1", conn, transaction))
+                {
+                  cmdP.Parameters.AddWithValue("@name", g.WhiteName);
+                  using (var r = cmdP.ExecuteReader())
+                  {
+                    if (r.Read())
+                    {
+                      whitePID = r.GetInt32("pID");
+                      int? curElo = r.IsDBNull(r.GetOrdinal("Elo")) ? null : r.GetInt32("Elo");
+                      r.Close();
+                      if (g.WhiteElo.HasValue && (!curElo.HasValue || g.WhiteElo.Value > curElo.Value))
+                      {
+                        using (var cmdU = new MySqlCommand("UPDATE Players SET Elo = @elo WHERE pID = @pID", conn, transaction))
+                        {
+                          cmdU.Parameters.AddWithValue("@elo", g.WhiteElo.Value);
+                          cmdU.Parameters.AddWithValue("@pID", whitePID);
+                          cmdU.ExecuteNonQuery();
+                        }
+                      }
+                    }
+                    else
+                    {
+                      r.Close();
+                      using (var cmdI = new MySqlCommand("INSERT INTO Players (Name, Elo) VALUES (@name, @elo)", conn, transaction))
+                      {
+                        cmdI.Parameters.AddWithValue("@name", g.WhiteName);
+                        cmdI.Parameters.AddWithValue("@elo", (object?)g.WhiteElo ?? DBNull.Value);
+                        cmdI.ExecuteNonQuery();
+                      }
+
+                      whitePID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn, transaction).ExecuteScalar());
                     }
                   }
                 }
-                else
-                {
-                  r.Close();
-                  using (var cmdI = new MySqlCommand("INSERT INTO Players (Name, Elo) VALUES (@name, @elo)", conn))
-                  {
-                    cmdI.Parameters.AddWithValue("@name", g.WhiteName);
-                    cmdI.Parameters.AddWithValue("@elo", (object?)g.WhiteElo ?? DBNull.Value);
-                    cmdI.ExecuteNonQuery();
-                  }
-                  whitePID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar());
-                }
-              }
-            }
 
-            int blackPID;
-            using (var cmdP = new MySqlCommand("SELECT pID, Elo FROM Players WHERE Name = @name LIMIT 1", conn))
-            {
-              cmdP.Parameters.AddWithValue("@name", g.BlackName);
-              using (var r = cmdP.ExecuteReader())
-              {
-                if (r.Read())
+                int blackPID;
+                using (var cmdP = new MySqlCommand("SELECT pID, Elo FROM Players WHERE Name = @name LIMIT 1", conn, transaction))
                 {
-                  blackPID = r.GetInt32("pID");
-                  int? curElo = r.IsDBNull(r.GetOrdinal("Elo")) ? null : r.GetInt32("Elo");
-                  r.Close();
-                  if (g.BlackElo.HasValue && (!curElo.HasValue || g.BlackElo.Value > curElo.Value))
+                  cmdP.Parameters.AddWithValue("@name", g.BlackName);
+                  using (var r = cmdP.ExecuteReader())
                   {
-                    using (var cmdU = new MySqlCommand("UPDATE Players SET Elo = @elo WHERE pID = @pID", conn))
+                    if (r.Read())
                     {
-                      cmdU.Parameters.AddWithValue("@elo", g.BlackElo.Value);
-                      cmdU.Parameters.AddWithValue("@pID", blackPID);
-                      cmdU.ExecuteNonQuery();
+                      blackPID = r.GetInt32("pID");
+                      int? curElo = r.IsDBNull(r.GetOrdinal("Elo")) ? null : r.GetInt32("Elo");
+                      r.Close();
+                      if (g.BlackElo.HasValue && (!curElo.HasValue || g.BlackElo.Value > curElo.Value))
+                      {
+                        using (var cmdU = new MySqlCommand("UPDATE Players SET Elo = @elo WHERE pID = @pID", conn, transaction))
+                        {
+                          cmdU.Parameters.AddWithValue("@elo", g.BlackElo.Value);
+                          cmdU.Parameters.AddWithValue("@pID", blackPID);
+                          cmdU.ExecuteNonQuery();
+                        }
+                      }
+                    }
+                    else
+                    {
+                      r.Close();
+                      using (var cmdI = new MySqlCommand("INSERT INTO Players (Name, Elo) VALUES (@name, @elo)", conn, transaction))
+                      {
+                        cmdI.Parameters.AddWithValue("@name", g.BlackName);
+                        cmdI.Parameters.AddWithValue("@elo", (object?)g.BlackElo ?? DBNull.Value);
+                        cmdI.ExecuteNonQuery();
+                      }
+
+                      blackPID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn, transaction).ExecuteScalar());
                     }
                   }
                 }
-                else
+
+                using (var cmdGame =
+                       new MySqlCommand(
+                         "INSERT IGNORE INTO Games (eID, WhitePlayer, BlackPlayer, Round, Result, Moves) VALUES (@eID, @whitePlayer, @blackPlayer, @round, @result, @moves)",
+                         conn, transaction))
                 {
-                  r.Close();
-                  using (var cmdI = new MySqlCommand("INSERT INTO Players (Name, Elo) VALUES (@name, @elo)", conn))
-                  {
-                    cmdI.Parameters.AddWithValue("@name", g.BlackName);
-                    cmdI.Parameters.AddWithValue("@elo", (object?)g.BlackElo ?? DBNull.Value);
-                    cmdI.ExecuteNonQuery();
-                  }
-                  blackPID = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar());
+                  cmdGame.Parameters.AddWithValue("@eID", eID);
+                  cmdGame.Parameters.AddWithValue("@whitePlayer", whitePID);
+                  cmdGame.Parameters.AddWithValue("@blackPlayer", blackPID);
+                  cmdGame.Parameters.AddWithValue("@round", g.Round);
+                  cmdGame.Parameters.AddWithValue("@result", g.Result.ToString());
+                  string moves = g.Moves ?? "";
+                  cmdGame.Parameters.AddWithValue("@moves", moves.Length > 2000 ? moves.Substring(0, 2000) : moves);
+                  cmdGame.ExecuteNonQuery();
                 }
+
+                // Update the Progress member variable every time progress has been made
+                // (e.g. one iteration of your upload loop)
+                // This will update the progress bar in the GUI
+                // Its value should be an integer representing a percentage of completion
+                processed++;
+                Progress = (int)(100.0 * processed / total);
+                // This tells the GUI to redraw after you update Progress (this should go inside your loop)
+                await InvokeAsync(StateHasChanged);
               }
+              
+              // If we reach no errors, commit the transaction
+              transaction.Commit();
             }
-
-            using (var cmdGame = new MySqlCommand("INSERT IGNORE INTO Games (eID, WhitePlayer, BlackPlayer, Round, Result, Moves) VALUES (@eID, @whitePlayer, @blackPlayer, @round, @result, @moves)", conn))
+            catch
             {
-              cmdGame.Parameters.AddWithValue("@eID", eID);
-              cmdGame.Parameters.AddWithValue("@whitePlayer", whitePID);
-              cmdGame.Parameters.AddWithValue("@blackPlayer", blackPID);
-              cmdGame.Parameters.AddWithValue("@round", g.Round);
-              cmdGame.Parameters.AddWithValue("@result", g.Result.ToString());
-              string moves = g.Moves ?? "";
-              cmdGame.Parameters.AddWithValue("@moves", moves.Length > 2000 ? moves.Substring(0, 2000) : moves);
-              cmdGame.ExecuteNonQuery();
+              // If we reach here, roll back the transaction because there's an error
+              transaction.Rollback();
+              throw;
             }
-
-            // Update the Progress member variable every time progress has been made
-            // (e.g. one iteration of your upload loop)
-            // This will update the progress bar in the GUI
-            // Its value should be an integer representing a percentage of completion
-            processed++;
-            Progress = (int)(100.0 * processed / total);
-            // This tells the GUI to redraw after you update Progress (this should go inside your loop)
-            await InvokeAsync(StateHasChanged);
           }
         }
         catch (Exception e)
@@ -228,7 +257,6 @@ namespace ChessBrowser.Components.Pages
         {
           // Open a connection
           conn.Open();
-
           // Generate and execute an SQL command,
           // then parse the results into an appropriate string and return it.
           string selectList = "Events.Name AS eName, Events.Site AS eSite, Events.`Date` AS eDate, WhiteP.Name AS wName, WhiteP.Elo AS wElo, BlackP.Name AS bName, BlackP.Elo AS bElo, Games.Result";
