@@ -1,8 +1,14 @@
 namespace ChessBrowser;
 
-public class PngParser
+public class PgnParser
 {
-    public static List<ChessGame> ParseFileGames(string fileContent)
+    /**
+     * A method that takes the values from a pgn file, and creates Chess Games containing
+     * the values of each game from the file.
+     *
+     * fileContent (string): a string containing the contents of the pgn file
+     */
+    public static List<ChessGame> ParseGamesFile(string fileContent)
     {
         var games = new List<ChessGame>();
         var lines = fileContent.Split('\n');
@@ -47,6 +53,10 @@ public class PngParser
         return games;
     }
 
+    /**
+     * A private helper method that creates a ChessGame object containing the values from
+     * a chess game's string of tag lines and moves lines.
+     */
     private static ChessGame ParseChessGame(List<string> tagLines, List<string> movesLines)
     {
         // create a chess game containing the data from the file

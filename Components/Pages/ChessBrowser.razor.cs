@@ -41,11 +41,9 @@ namespace ChessBrowser.Components.Pages
       // assuimg you've filled in the credentials in the GUI
       string connection = GetConnectionString();
 
-      // TODO:
-      //   Parse the provided PGN data
-      //   We recommend creating separate libraries to represent chess data and load the file
+      // Parse the provided PGN data
       string fileContent = string.Join("\n", PGNFileLines);
-      List<ChessGame> games = PngParser.ParseFileGames(fileContent);
+      List<ChessGame> games = PgnParser.ParseGamesFile(fileContent);
       if (games.Count == 0)
         return;
 
@@ -56,8 +54,7 @@ namespace ChessBrowser.Components.Pages
           // Open a connection
           conn.Open();
 
-          // TODO:
-          //   Iterate through your data and generate appropriate insert commands
+          // Iterate through your data and generate appropriate insert commands
           int total = games.Count;
           int processed = 0;
           foreach (ChessGame g in games)
@@ -178,11 +175,10 @@ namespace ChessBrowser.Components.Pages
               cmdGame.ExecuteNonQuery();
             }
 
-            // TODO:
-            //   Update the Progress member variable every time progress has been made
-            //   (e.g. one iteration of your upload loop)
-            //   This will update the progress bar in the GUI
-            //   Its value should be an integer representing a percentage of completion
+            // Update the Progress member variable every time progress has been made
+            // (e.g. one iteration of your upload loop)
+            // This will update the progress bar in the GUI
+            // Its value should be an integer representing a percentage of completion
             processed++;
             Progress = (int)(100.0 * processed / total);
             // This tells the GUI to redraw after you update Progress (this should go inside your loop)
@@ -233,9 +229,8 @@ namespace ChessBrowser.Components.Pages
           // Open a connection
           conn.Open();
 
-          // TODO:
-          //   Generate and execute an SQL command,
-          //   then parse the results into an appropriate string and return it.
+          // Generate and execute an SQL command,
+          // then parse the results into an appropriate string and return it.
           string selectList = "Events.Name AS eName, Events.Site AS eSite, Events.`Date` AS eDate, WhiteP.Name AS wName, WhiteP.Elo AS wElo, BlackP.Name AS bName, BlackP.Elo AS bElo, Games.Result";
           if (showMoves)
             selectList += ", Games.Moves AS Moves";
